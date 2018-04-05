@@ -1,0 +1,149 @@
+groups:
+- name: all
+  jobs:
+  - deploy-to-staging
+  - end-user-testing
+  - ops-testing
+  - promote-to-releases
+  - deploy-to-production
+- name: staging
+  jobs:
+  - deploy-to-staging
+  - end-user-testing
+  - ops-testing
+- name: production
+  jobs:
+  - promote-to-releases
+  - deploy-to-production
+- name: manual
+  jobs:
+  - end-user-testing
+
+resources:
+- name: app-ops-promotion
+  type: git
+  source:
+    branch: master
+    uri: {{app-ops-promotion-repo}}
+- name: artifactory-repository-candidates
+  type: artifactory
+  check_every: 1m
+  source:
+    endpoint: {{artifactory-enpoint}}
+    repository: {{artifactory-candidates-repo}}
+    regex: {{artifactory-candidates-regex}}
+    username: {{artifactory-username}}
+    password: {{artifactory-password}}
+- name: artifactory-repository-releases
+  type: artifactory
+  check_every: 1m
+  source:
+    endpoint: {{artifactory-enpoint}}
+    repository: {{artifactory-releases-repo}}
+    username: {{artifactory-username}}
+    password: {{artifactory-password}}
+- name: cf-staging
+  type: cf
+  source:
+    api: {{cf-staging-api}}
+    organization: {{cf-staging-organization}}
+    username: {{cf-staging-username}}
+    password: {{cf-staging-password}}
+    space: {{cf-staging-space}}
+    skip_cert_check: true
+
+jobs:
+- name: deploy-to-staging
+  serial: true
+  public: true
+  plan:
+  - get: app-ops-promotion
+    trigger: true
+  - get: artifactory-repository-candidates
+    trigger: true
+  - put: cf-staging
+    params:
+      manifest: {{app-manifest}}
+      current_app_name: {{app-name}}
+- name: end-user-testing
+  plan:
+  - get: app-ops-promotion
+    passed:
+      - deploy-to-staging
+    trigger: false
+  - task: do-your-manual-task-here
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: ubuntu
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          echo ""
+- name: ops-testing
+  plan:
+  - get: app-ops-promotion
+    passed:
+      - deploy-to-staging
+    trigger: true
+  - task: do-your-task-here
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: ubuntu
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          echo ""
+- name: promote-to-releases
+  plan:
+  - get: app-ops-promotion
+    passed:
+      - end-user-testing
+      - ops-testing
+    trigger: true
+  - get: artifactory-repository-candidates
+    trigger: true
+  - task: do-your-task-here
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: ubuntu
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          echo ""
+  - put: artifactory-repository-releases
+- name: deploy-to-production
+  plan:
+  - get: app-ops-promotion
+    passed:
+      - promote-to-releases
+    trigger: true
+  - get: artifactory-repository-releases
+    trigger: true
+  - task: do-your-task-here
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: ubuntu
+      run:
+        path: sh
+        args:
+        - -exc
+        - |
+          echo ""
